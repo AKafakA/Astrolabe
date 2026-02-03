@@ -115,16 +115,49 @@ data/                       # Pre-collected data for reproducibility
    ```bash
    python astrolabe/exp/generate_config.py --username YOUR_SSH_USERNAME
    ```
-   Or manually create configuration files following examples in `astrolabe/config/`.
+   Or manually edit configuration files in `astrolabe/config/`:
+   - `host_configs.json` - Node hostnames, IPs, and ports
+   - `llama_config.json` - Model and scheduler parameters
 
-2. **Deploy software stack**:
+2. **Configure HuggingFace access**:
+
+   Edit `astrolabe/exp/run_exp_vllm.sh` and set your HuggingFace token:
+   ```bash
+   HUGGINGFACE_TOKEN="YOUR_HF_TOKEN_HERE"
+   ```
+
+   You need a HuggingFace token with access to the Llama model weights:
+   - Create token at: https://huggingface.co/settings/tokens
+   - Request access to Llama-2 at: https://huggingface.co/meta-llama/Llama-2-7b-hf
+
+3. **Install vLLM** on all nodes:
+
+   Astrolabe requires a modified vLLM 0.7.2 with scheduler trace export API.
+
+   Clone and install the modified vLLM:
+   ```bash
+   git clone https://anonymous.4open.science/r/vllm-57F6
+   cd vllm-57F6
+   pip install -e .
+   ```
+
+   Or use the setup script which handles installation:
    ```bash
    bash astrolabe/exp/setup.sh
    ```
 
-3. **Configure credentials**: Set your HuggingFace token in `exp/run_exp_vllm.sh`:
+   The modified vLLM includes:
+   - `get_scheduler_trace` API for real-time scheduler state export
+   - FlashInfer attention backend support
+   - Required for Astrolabe's predictive scheduling
+
+4. **Verify deployment**:
    ```bash
-   export HF_TOKEN="YOUR_HF_TOKEN_HERE"
+   # Test vLLM is running
+   curl http://<node-ip>:8000/health
+
+   # Test predictor is running
+   curl http://<node-ip>:8100/health
    ```
 
 ### 3.3 Running Experiments
