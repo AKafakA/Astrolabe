@@ -154,15 +154,13 @@ All experiment scripts are in `astrolabe/exp/end_to_end_exp_scripts/`:
 
 | Script | Description | Paper Reference |
 |--------|-------------|-----------------|
-| `a30_main/main_experiment.sh` | Main results (12x A30 GPUs) | Figure 6, Section 5.3 |
-| `ablation/po2_ablation_exp.sh` | Power-of-2 sampling ablation | Section 5.4 |
-| `ablation/burstiness_exp.sh` | Burstiness sensitivity study | Section 5.4 |
-| `ablation/error_heatmap_exp.sh` | Prediction error sensitivity | Section 5.4 |
-| `ablation/cpu_tracking_experiment.sh` | CPU overhead analysis | Section 5.4 |
-| `a100_supplementary/full_comparison.sh` | Llumnix migration comparison | Section 5.5 |
-| `ablation/auto_provision_exp.sh` | Auto-provisioning experiment | Section 5.5 |
+| `a30_main/main_experiment.sh` | Main results (12x A30 GPUs) | Figure 6, Section 6.3 |
+| `ablation/po2_ablation_exp.sh` | Power-of-2 sampling ablation | Section 6.4 |
+| `ablation/burstiness_exp.sh` | Burstiness sensitivity study | Section 6.7 |
+| `ablation/error_heatmap_exp.sh` | Prediction error sensitivity | Section 6.8 |
+| `ablation/cpu_tracking_experiment.sh` | CPU overhead analysis | Section 6.9 |
+| `a100_supplementary/full_comparison.sh` | Llumnix migration comparison | Section 6.5 |
 | `ablation/extension_experiment.sh` | Qwen model & BurstGPT dataset | Section 5.6 |
-
 ---
 
 ## 5. Training the Length Estimator
