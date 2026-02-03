@@ -1,0 +1,192 @@
+#!/bin/bash
+# A100-40GB Cluster Setup Script
+# For CloudLab gpu-node nodes (4×A100-40GB SXM4 with NVLink)
+#
+# Prerequisites:
+#   Generate config first:
+#     python astrolabe/exp/generate_config.py --user_name user \
+#         --manifest_path astrolabe/a100_cl_manifest.xml \
+#         --cluster_type a100 --tensor_parallel_size 4 --num_predictors 4
+#
+# Usage:
+#   sh astrolabe/exp/setup_a100.sh [HOSTS_FILE]
+#
+# This script installs on ALL nodes in hosts file:
+#   - CUDA 12.6
+#   - vLLM (block branch) with precompiled wheels
+#   - PyTorch 2.6 with CUDA support (installed AFTER vLLM)
+#   - Astrolabe (a100-test branch)
+#
+# IMPORTANT: Installation order matters!
+#   1. vLLM with VLLM_USE_PRECOMPILED=1 (downloads compatible .so files)
+#   2. PyTorch 2.6.0+cu126 (after vLLM, not before)
+#
+# See: Astrolabe_paper/claude/A100_TESTING_GUIDE.md for full instructions
+
+set -e
+
+ASTROLABE_GITHUB_LINK="https://github.com/anonymous/astrolabe.git"
+VLLM_ASTROLABE_GITHUB_LINK="https://github.com/anonymous/vllm-astrolabe.git"
+BLOCK_BRANCH="a100-test"
+VLLM_BRANCH="astrolabe"
+
+# Allow custom hosts file as argument
+HOSTS_FILE="${1:-astrolabe/config/a100_hosts}"
+
+# Check if hosts file exists
+if [ ! -f "$HOSTS_FILE" ]; then
+    echo "=============================================="
+    echo "ERROR: Hosts file not found: $HOSTS_FILE"
+    echo "=============================================="
+    echo ""
+    echo "Please run generate_config.py first:"
+    echo ""
+    echo "  python astrolabe/exp/generate_config.py \\"
+    echo "      --user_name YOUR_USERNAME \\"
+    echo "      --manifest_path astrolabe/a100_cl_manifest.xml \\"
+    echo "      --cluster_type a100 \\"
+    echo "      --tensor_parallel_size 4 \\"
+    echo "      --num_predictors 4"
+    echo ""
+    echo "Or specify a custom hosts file:"
+    echo "  sh astrolabe/exp/setup_a100.sh /path/to/hosts"
+    exit 1
+fi
+
+# Show hosts
+echo "=============================================="
+echo "A100-40GB Cluster Setup"
+echo "=============================================="
+echo ""
+echo "Hosts file: $HOSTS_FILE"
+echo "Target nodes:"
+cat "$HOSTS_FILE"
+echo ""
+echo "Astrolabe branch: $BLOCK_BRANCH"
+echo "vLLM branch: $VLLM_BRANCH"
+echo ""
+echo "Press Enter to continue or Ctrl+C to abort..."
+read
+
+echo "=============================================="
+echo "A100-40GB Cluster Setup"
+echo "=============================================="
+echo "Hosts file: $HOSTS_FILE"
+echo "Astrolabe branch: $BLOCK_BRANCH"
+echo "vLLM branch: $VLLM_BRANCH"
+echo ""
+
+# Phase 1: System updates and build dependencies
+echo "=== Phase 1: System updates ==="
+parallel-ssh -t 0 -h $HOSTS_FILE "sudo apt update && sudo apt full-upgrade -y"
+# Install build tools (needed if vLLM precompiled wheels not available)
+parallel-ssh -t 0 -h $HOSTS_FILE "sudo apt install -y python3-pip python3-venv python3-dev ccache git build-essential cmake ninja-build"
+parallel-ssh -t 0 -h $HOSTS_FILE "pip3 install -U pip==25.0.1 setuptools wheel"
+
+# Phase 2: CUDA 12.6 installation
+echo "=== Phase 2: CUDA 12.6 installation ==="
+parallel-ssh -t 0 -h $HOSTS_FILE "wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin && sudo mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600"
+parallel-ssh -t 0 -h $HOSTS_FILE "wget -q https://developer.download.nvidia.com/compute/cuda/12.6.3/local_installers/cuda-repo-ubuntu2004-12-6-local_12.6.3-560.35.05-1_amd64.deb && sudo dpkg -i cuda-repo-ubuntu2004-12-6-local_12.6.3-560.35.05-1_amd64.deb"
+parallel-ssh -t 0 -h $HOSTS_FILE "sudo cp /var/cuda-repo-ubuntu2004-12-6-local/cuda-*-keyring.gpg /usr/share/keyrings/ && sudo apt-get update"
+parallel-ssh -t 0 -h $HOSTS_FILE "sudo dpkg --configure -a && sudo apt-get -y install cuda-toolkit-12-6 && sudo apt-get install -y nvidia-open"
+parallel-ssh -t 0 -h $HOSTS_FILE "echo 'export PATH=/usr/local/cuda-12.6/bin:\$PATH' >> ~/.bashrc && echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.6/lib64:\$LD_LIBRARY_PATH' >> ~/.bashrc"
+
+# Phase 3: Mount NVMe storage (A100 nodes have NVMe for model storage)
+echo "=== Phase 3: Mount NVMe storage ==="
+parallel-ssh -t 0 -h $HOSTS_FILE "if [ -b /dev/nvme0n1 ] && ! mountpoint -q /mydata; then sudo mkfs.ext4 -F /dev/nvme0n1 && sudo mkdir -p /mydata && sudo mount /dev/nvme0n1 /mydata && sudo chown \$(whoami):\$(whoami) /mydata && echo 'NVMe mounted at /mydata'; else echo 'NVMe already mounted or not available'; fi"
+
+# Phase 4: Verify GPUs (A100-40GB should show 4 GPUs)
+echo "=== Phase 4: Verify GPUs ==="
+parallel-ssh -t 0 -h $HOSTS_FILE "nvidia-smi --query-gpu=name,memory.total --format=csv"
+
+# Phase 5: Clone and install vLLM with precompiled wheels
+# IMPORTANT: vLLM must be installed BEFORE PyTorch 2.6.0+cu126
+# The precompiled wheels include compatible .so files
+echo "=== Phase 5: vLLM installation (precompiled, ~3 min) ==="
+parallel-ssh -t 0 -h $HOSTS_FILE "rm -rf ~/vllm && git clone ${VLLM_ASTROLABE_GITHUB_LINK} ~/vllm"
+parallel-ssh -t 0 -h $HOSTS_FILE "cd ~/vllm && git checkout ${VLLM_BRANCH}"
+parallel-ssh -t 0 -h $HOSTS_FILE "cd ~/vllm && sudo VLLM_USE_PRECOMPILED=1 pip install --editable ."
+
+# Add PYTHONPATH to bashrc for tensor parallelism subprocess compatibility
+parallel-ssh -t 0 -h $HOSTS_FILE "grep -q 'PYTHONPATH.*vllm' ~/.bashrc || echo 'export PYTHONPATH=\$HOME/vllm:\$PYTHONPATH' >> ~/.bashrc"
+
+# Phase 6: PyTorch and dependencies (MUST be after vLLM)
+# Installing PyTorch after vLLM ensures ABI compatibility
+echo "=== Phase 6: PyTorch and dependencies (after vLLM) ==="
+parallel-ssh -t 0 -h $HOSTS_FILE "pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu126"
+parallel-ssh -t 0 -h $HOSTS_FILE "pip install flashinfer-python==0.2.5 triton==3.2.0"
+
+# Phase 7: Clone and install Astrolabe
+echo "=== Phase 7: Astrolabe installation ==="
+parallel-ssh -t 0 -h $HOSTS_FILE "rm -rf ~/Astrolabe && git clone ${ASTROLABE_GITHUB_LINK} ~/Astrolabe"
+parallel-ssh -t 0 -h $HOSTS_FILE "cd ~/Astrolabe && git checkout ${BLOCK_BRANCH}"
+parallel-ssh -t 0 -h $HOSTS_FILE "cd ~/Astrolabe && pip install -r requirements.txt"
+# Fix transformers version - vLLM block branch requires 4.50.3, not 5.0+
+parallel-ssh -t 0 -h $HOSTS_FILE "pip install transformers==4.50.3"
+# Note: Astrolabe doesn't have setup.py/pyproject.toml - use PYTHONPATH=. instead
+
+# Phase 8: SCP local configs to remote hosts (configs are gitignored for security)
+echo "=== Phase 8: Copy local configs to remote hosts ==="
+CONFIG_DIR="astrolabe/config"
+while IFS= read -r host; do
+    echo "Copying configs to $host..."
+    # Copy A100-specific configs
+    scp ${CONFIG_DIR}/a100_host_configs.json ${host}:~/Astrolabe/astrolabe/config/ 2>/dev/null || true
+    scp ${CONFIG_DIR}/a100_hosts ${host}:~/Astrolabe/astrolabe/config/ 2>/dev/null || true
+    scp ${CONFIG_DIR}/llama70b_a100_40gb_config.json ${host}:~/Astrolabe/astrolabe/config/ 2>/dev/null || true
+    # Copy any other host configs that exist
+    scp ${CONFIG_DIR}/host_configs.json ${host}:~/Astrolabe/astrolabe/config/ 2>/dev/null || true
+    scp ${CONFIG_DIR}/hosts ${host}:~/Astrolabe/astrolabe/config/ 2>/dev/null || true
+done < "$HOSTS_FILE"
+echo "Config files copied to all hosts."
+
+# Phase 9: Create directories and cleanup
+echo "=== Phase 9: Create directories and cleanup ==="
+parallel-ssh -t 0 -h $HOSTS_FILE "mkdir -p ~/Astrolabe/experiment_output/logs ~/Astrolabe/cache"
+parallel-ssh -t 0 -h $HOSTS_FILE "rm -f ~/cuda-repo-*.deb"
+
+# Phase 10: Setup SSH keys between nodes (for cache sharing)
+echo "=== Phase 10: Setup SSH keys between nodes ==="
+FIRST_HOST=$(head -1 $HOSTS_FILE)
+# Generate SSH key on first host if not exists
+ssh $FIRST_HOST "[ -f ~/.ssh/id_rsa ] || ssh-keygen -t rsa -f ~/.ssh/id_rsa -N '' -q"
+FIRST_HOST_PUBKEY=$(ssh $FIRST_HOST "cat ~/.ssh/id_rsa.pub")
+# Add first host's key to all other hosts
+while IFS= read -r host; do
+    if [ "$host" != "$FIRST_HOST" ]; then
+        echo "Adding SSH key to $host..."
+        ssh $host "mkdir -p ~/.ssh && echo '$FIRST_HOST_PUBKEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys" 2>/dev/null || true
+    fi
+done < "$HOSTS_FILE"
+
+# Phase 11: Verify installation
+echo "=== Phase 11: Verify installation ==="
+parallel-ssh -t 0 -h $HOSTS_FILE "python -c 'import torch; print(f\"PyTorch: {torch.__version__}, CUDA: {torch.cuda.is_available()}, GPUs: {torch.cuda.device_count()}\")'"
+parallel-ssh -t 0 -h $HOSTS_FILE "python -c 'import vllm; print(f\"vLLM imported successfully\")'"
+
+echo ""
+echo "=============================================="
+echo "A100 Setup Complete!"
+echo "=============================================="
+echo ""
+echo "Next steps:"
+echo "  1. Set HuggingFace token (required for Llama-2):"
+echo "     export HF_TOKEN=your_token_here"
+echo "     # Or save to file: echo 'your_token' > ~/.cache/huggingface/token"
+echo ""
+echo "  2. Run Vidur profiling for A100-40GB (if new GPU/model combo):"
+echo "     sh astrolabe/exp/end_to_end_exp_scripts/a100_supplementary/a100_40gb_profiling.sh"
+echo ""
+echo "  3. Run experiment:"
+echo "     sh astrolabe/exp/end_to_end_exp_scripts/a100_supplementary/a100_llama70b_exp.sh"
+echo ""
+echo "Known issues fixed in this script:"
+echo "  - VLLM_USE_V1=0 required for Astrolabe's get_scheduler_trace API"
+echo "  - transformers==4.50.3 required (not 5.0+)"
+echo "  - VLLM_USE_PRECOMPILED=1 for fast installation (~3 min vs 30 min)"
+echo "  - PyTorch installed AFTER vLLM (order matters for ABI compatibility)"
+echo "  - PYTHONPATH includes ~/vllm for TP subprocess compatibility"
+echo ""
+echo "IMPORTANT: Use internal network (10.x.x.x) for inter-node traffic."
+echo "  Run generate_config.py to create configs with internal IPs."
+echo "  See: https://docs.cluster.us/control-net.html"

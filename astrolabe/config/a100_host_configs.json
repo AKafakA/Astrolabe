@@ -1,0 +1,14 @@
+{
+    "gpu-node0.example.cluster.edu": {
+        "backend_port": 8000,
+        "ip_address": "10.10.1.1",
+        "predictor_ports": [8100, 8300, 8400, 8500],
+        "tensor_parallel_size": 4
+    },
+    "gpu-node1.example.cluster.edu": {
+        "backend_port": 8000,
+        "ip_address": "10.10.1.2",
+        "predictor_ports": [8100, 8300, 8400, 8500],
+        "tensor_parallel_size": 4
+    }
+}

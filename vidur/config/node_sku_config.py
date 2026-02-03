@@ -1,0 +1,83 @@
+from dataclasses import dataclass, field
+
+from vidur.config.base_fixed_config import BaseFixedConfig
+from vidur.logger import init_logger
+from vidur.types import DeviceSKUType, NodeSKUType
+
+logger = init_logger(__name__)
+
+
+@dataclass
+class BaseNodeSKUConfig(BaseFixedConfig):
+    num_devices_per_node: int
+
+
+@dataclass
+class A30SingleGPUConfig(BaseNodeSKUConfig):
+    device_sku_type: DeviceSKUType = DeviceSKUType.A30
+    num_devices_per_node: int = 1
+
+    @staticmethod
+    def get_type():
+        return NodeSKUType.A30_SINGLE_GPU
+
+
+@dataclass
+class A40PairwiseNvlinkNodeSKUConfig(BaseNodeSKUConfig):
+    device_sku_type: DeviceSKUType = DeviceSKUType.A40
+    num_devices_per_node: int = 8
+
+    @staticmethod
+    def get_type():
+        return NodeSKUType.A40_PAIRWISE_NVLINK
+
+
+@dataclass
+class A100PairwiseNvlinkNodeSKUConfig(BaseNodeSKUConfig):
+    device_sku_type: DeviceSKUType = DeviceSKUType.A100
+    num_devices_per_node: int = 4
+
+    @staticmethod
+    def get_type():
+        return NodeSKUType.A100_PAIRWISE_NVLINK
+
+
+@dataclass
+class H100PairwiseNvlinkNodeSKUConfig(BaseNodeSKUConfig):
+    device_sku_type: DeviceSKUType = DeviceSKUType.H100
+    num_devices_per_node: int = 4
+
+    @staticmethod
+    def get_type():
+        return NodeSKUType.H100_PAIRWISE_NVLINK
+
+
+@dataclass
+class A100DgxNodeSKUConfig(BaseNodeSKUConfig):
+    device_sku_type: DeviceSKUType = DeviceSKUType.A100
+    num_devices_per_node: int = 8
+
+    @staticmethod
+    def get_type():
+        return NodeSKUType.A100_DGX
+
+
+@dataclass
+class H100DgxNodeSKUConfig(BaseNodeSKUConfig):
+    device_sku_type: DeviceSKUType = DeviceSKUType.H100
+    num_devices_per_node: int = 8
+
+    @staticmethod
+    def get_type():
+        return NodeSKUType.H100_DGX
+
+
+@dataclass
+class A100_40GBPairwiseNvlinkNodeSKUConfig(BaseNodeSKUConfig):
+    """4×4×A100-40GB SXM4 with NVLink (HGX A100)"""
+    device_sku_type: DeviceSKUType = DeviceSKUType.A100_40GB
+    num_devices_per_node: int = 4
+
+    @staticmethod
+    def get_type():
+        return NodeSKUType.A100_40GB_PAIRWISE_NVLINK

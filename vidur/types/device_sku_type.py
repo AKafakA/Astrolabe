@@ -1,0 +1,9 @@
+from vidur.types.base_int_enum import BaseIntEnum
+
+
+class DeviceSKUType(BaseIntEnum):
+    A40 = 1
+    A100 = 2
+    H100 = 3
+    A30 = 4
+    A100_40GB = 5  # A100 SXM4 40GB
