@@ -82,6 +82,20 @@ experiments_analysis/       # Plotting and analysis scripts
 ├── burstiness_plot.py      # Burstiness study plots
 ├── po2_plot.py             # Power-of-2 ablation plots
 └── cpu_overhead_plot.py    # CPU overhead analysis
+
+data/                       # Pre-collected data for reproducibility
+├── profiling/              # Vidur execution time profiles
+│   ├── compute/            # GPU kernel profiles (A30, A100, A40, H100)
+│   │   └── {device}/{model}/  # attention.csv, mlp.csv per model
+│   └── network/            # Collective communication profiles
+│       └── {device}/       # all_reduce.csv, send_recv.csv
+├── trace_data/             # Request traces for benchmarks
+│   ├── sharegpt/           # ShareGPT conversation traces
+│   ├── arxiv/              # Arxiv summarization traces
+│   ├── burstgpt/           # BurstGPT traces
+│   └── code/               # Code completion traces
+└── length_estimation/      # Training data for length predictor
+    └── sharegpt-*.json     # Labeled prompt-response pairs
 ```
 
 ---
